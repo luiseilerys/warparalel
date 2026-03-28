@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ManaStoria</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            background: linear-gradient(#0f0b2e, #1a2a5c);
+            color: #ddd;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            text-align: center;
+            touch-action: manipulation;
+        }
+        .container { max-width: 620px; margin: 0 auto; }
+        .pantalla {
+            background: rgba(15, 15, 45, 0.95);
+            border: 4px solid #88aaff;
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 15px;
+            box-shadow: 0 0 15px #4466ff;
+        }
+        h1 { color: #aaccff; text-shadow: 0 0 12px #66aaff; margin: 10px 0; }
+        
+        .barra-vida {
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .vida-inner {
+            height: 100%;
+            transition: width 0.4s;
+        }
+        button {
+            width: 100%;
+            max-width: 320px;
+            padding: 15px;
+            margin: 6px 4px;
+            font-size: 17px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .btn-atacar { background: #ff3366; color: white; }
+        .btn-detener { background: #666; color: white; }
+        .btn-normal { background: #5566ff; color: white; }
+        .btn-craft { background: #aa66ff; color: white; }
+
+        .log {
+            background: #0f0f22;
+            height: 160px;
+            overflow-y: auto;
+            text-align: left;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 15px;
+            margin: 12px 0;
+        }
+        .pet { color: #ffcc66; font-weight: bold; }
+        .inventario {
+            background: #1a1a3a;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .xp-info {
+            font-size: 14px;
+            color: #aaccff;
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌟 ManaStoria 🌟</h1>
+    
+    <div class="pantalla">
+        <div id="historia">Explora los bosques encantados de Asteria</div>
+        
+        <div id="statsJugador" style="font-size:15px; margin:10px 0;"></div>
+        <div id="xpInfo" class="xp-info"></div>
+
+        <div id="infoPet" style="display:none; margin:10px 0; font-size:16px;">
+            🐾 Compañero: <span id="nombrePet" class="pet"></span>
+        </div>
+
+        <div class="inventario">
+            📦 Inventario: <span id="inventario">Hierbas: 0 | Madera: 0 | Cristales: 0 | Pociones: 0</span>
+        </div>
+
+        <div id="combateUI" style="display:none;">
+            <strong>Enemigo:</strong> <span id="nombreEnemigo"></span><br>
+            <div class="barra-vida"><div id="barraEnemigo" class="vida-inner" style="width:100%; background:linear-gradient(#ff3366,#ff6699);"></div></div>
+            
+            <div style="margin-top:12px;">
+                <strong>Tu HP:</strong> <span id="hpJugador"></span>
+                <div class="barra-vida"><div id="barraJugador" class="vida-inner" style="width:100%; background:linear-gradient(#44ff88,#66ffaa);"></div></div>
+            </div>
+        </div>
+
+        <div id="log" class="log"></div>
+    </div>
+
+    <div id="botones"></div>
+</div>
+
+<script>
+// ====================== DATOS ======================
+let jugador = {
+    nombre: "Aventurero",
+    nivel: 1,
+    hp: 170,
+    hpMax: 170,
+    ataque: 25,
+    oro: 90,
+    experiencia: 0,
+    expNecesaria: 100
+};
+
+let pet = null;
+let inventario = { hierbas: 0, madera: 0, cristales: 0, pociones: 2 };
+
+const mascotas = {
+    slime:  { nombre: "Slime Azul", emoji: "🟦", ataque: 14 },
+    lobo:   { nombre: "Lobo de Mana", emoji: "🐺", ataque: 20 },
+    hada:   { nombre: "Hada Luminosa", emoji: "🧚", ataque: 17 },
+    golem:  { nombre: "Golemito", emoji: "🪨", ataque: 24 }
+};
+
+let enemigoActual = null;
+let enCombate = false;
+let atacando = false;
+
+let intervaloHeroe = null;
+let intervaloPet = null;
+let intervaloEnemigo = null;
+
+// ====================== FUNCIONES ======================
+function calcularExpNecesaria(nivel) {
+    return Math.floor(100 * Math.pow(1.35, nivel - 1));
+}
+
+function actualizarStats() {
+    jugador.expNecesaria = calcularExpNecesaria(jugador.nivel);
+    
+    document.getElementById("statsJugador").innerHTML = `
+        ❤️ HP: ${Math.floor(jugador.hp)}/${jugador.hpMax} &nbsp;&nbsp;
+        ⚔️ Ataque: ${jugador.ataque} &nbsp;&nbsp;
+        ⭐ Nivel: ${jugador.nivel} &nbsp;&nbsp;
+        💰 Oro: ${jugador.oro}
+    `;
+
+    const progreso = Math.min(100, Math.floor((jugador.experiencia / jugador.expNecesaria) * 100));
+    document.getElementById("xpInfo").innerHTML = `
+        Exp: ${jugador.experiencia} / ${jugador.expNecesaria} 
+        <span style="color:#88ffcc">(${progreso}%)</span>
+    `;
+
+    document.getElementById("inventario").textContent = 
+        `Hierbas: ${inventario.hierbas} | Madera: ${inventario.madera} | Cristales: ${inventario.cristales} | Pociones: ${inventario.pociones}`;
+}
+
+function agregarLog(texto, color = "#ddd") {
+    const log = document.getElementById("log");
+    const div = document.createElement("div");
+    div.style.color = color;
+    div.innerHTML = texto;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
+
+function actualizarBarras() {
+    if (!enemigoActual) return;
+    const porcEn = Math.max(0, (enemigoActual.hp / enemigoActual.hpMax) * 100);
+    const porcJug = Math.max(0, (jugador.hp / jugador.hpMax) * 100);
+    document.getElementById("barraEnemigo").style.width = porcEn + "%";
+    document.getElementById("barraJugador").style.width = porcJug + "%";
+    document.getElementById("hpJugador").textContent = `${Math.floor(jugador.hp)}/${jugador.hpMax}`;
+}
+
+// ====================== EXPLORACIÓN - Pet al 3% ======================
+function explorar() {
+    const azar = Math.random();
+
+    if (azar < 0.48) {
+        // 48% - Enemigo
+        iniciarCombate();
+    } 
+    else if (azar < 0.76) {
+        // 28% - Oro
+        const oro = 26 + Math.floor(Math.random() * 52);
+        jugador.oro += oro;
+        agregarLog(`¡Encontraste <strong>${oro}</strong> de oro!`, "#ffdd66");
+    } 
+    else if (azar < 0.88) {
+        // 12% - Materiales
+        inventario.hierbas += 1 + Math.floor(Math.random() * 3);
+        inventario.madera += Math.floor(Math.random() * 3);
+        agregarLog("Recolectaste hierbas y madera del bosque.", "#88ffcc");
+    } 
+    else if (azar < 0.91 && !pet) {
+        // 3% - Pet (muy raro)
+        const keys = Object.keys(mascotas);
+        pet = {...mascotas[keys[Math.floor(Math.random() * keys.length)]]};
+        agregarLog(`¡Suerte legendaria! Capturaste un <strong>${pet.nombre}</strong> ${pet.emoji}`, "#ffcc66");
+    } 
+    else if (azar < 0.97) {
+        // 6% - Quest menor
+        agregarLog("¡Encontraste una quest menor! Gana experiencia extra.", "#aaccff");
+        jugador.experiencia += 22;
+    } 
+    else {
+        // 9% - Nada
+        agregarLog("Exploraste la zona pero no encontraste nada especial.");
+    }
+
+    actualizarStats();
+}
+
+// ====================== CRAFTING ======================
+function craftearPocion() {
+    if (inventario.hierbas >= 3) {
+        inventario.hierbas -= 3;
+        inventario.pociones += 1;
+        agregarLog("¡Craftaste una **Poción de Curación**!", "#88ffcc");
+        actualizarStats();
+    } else {
+        agregarLog("Necesitas al menos 3 hierbas para craftar una poción.", "#ff9999");
+    }
+}
+
+// ====================== COMBATE ======================
+function iniciarCombate() {
+    const nombres = ["Goblin", "Lobo Salvaje", "Esqueleto Guerrero", "Elemental de Fuego", "Araña Venenosa"];
+    const nombreEn = nombres[Math.floor(Math.random() * nombres.length)];
+
+    enemigoActual = {
+        nombre: nombreEn,
+        hp: 125 + jugador.nivel * 35,
+        hpMax: 125 + jugador.nivel * 35,
+        ataque: 19 + jugador.nivel * 8
+    };
+
+    enCombate = true;
+    atacando = false;
+
+    document.getElementById("combateUI").style.display = "block";
+    document.getElementById("nombreEnemigo").textContent = enemigoActual.nombre;
+
+    agregarLog(`¡Un ${nombreEn} te emboscó!`, "#ff6666");
+    actualizarBarras();
+    mostrarBotonesCombate();
+}
+
+function toggleAtaque() {
+    if (!enCombate) return;
+    atacando = !atacando;
+
+    if (atacando) {
+        agregarLog("¡Tu héroe inició el ataque automático!", "#aaffaa");
+
+        intervaloHeroe = setInterval(() => {
+            if (!enCombate || !atacando) return;
+            const dano = Math.floor(jugador.ataque * (0.78 + Math.random() * 0.52));
+            enemigoActual.hp -= dano;
+            agregarLog(`¡Atacaste por ${dano} daño!`, "#aaffaa");
+            actualizarBarras();
+            if (enemigoActual.hp <= 0) victoria();
+        }, 920);
+
+        if (pet) {
+            intervaloPet = setInterval(() => {
+                if (!enCombate || !atacando) return;
+                const dano = Math.floor(pet.ataque * (0.85 + Math.random() * 0.45));
+                enemigoActual.hp -= dano;
+                agregarLog(`${pet.emoji} atacó por ${dano}`, "#ffdd88");
+                actualizarBarras();
+                if (enemigoActual.hp <= 0) victoria();
+            }, 1350);
+        }
+
+        intervaloEnemigo = setInterval(() => {
+            if (!enCombate) return;
+            const dano = Math.floor(enemigoActual.ataque * (0.7 + Math.random() * 0.55));
+            jugador.hp -= dano;
+            agregarLog(`¡El ${enemigoActual.nombre} te hirió por ${dano}!`, "#ff9999");
+            actualizarBarras();
+            if (jugador.hp <= 0) gameOver();
+        }, 1150);
+    } else {
+        clearInterval(intervaloHeroe);
+        clearInterval(intervaloPet);
+        clearInterval(intervaloEnemigo);
+        agregarLog("El héroe se detuvo.", "#ffcc66");
+    }
+    mostrarBotonesCombate();
+}
+
+function mostrarBotonesCombate() {
+    const texto = atacando ? "⏹️ Detener Ataque" : "▶️ Iniciar Ataque Automático";
+    const clase = atacando ? "btn-detener" : "btn-atacar";
+
+    document.getElementById("botones").innerHTML = `
+        <button onclick="toggleAtaque()" class="${clase}">${texto}</button>
+        ${inventario.pociones > 0 ? `<button onclick="usarPocion()" class="btn-normal">❤️ Usar Poción (${inventario.pociones})</button>` : ''}
+        <button onclick="huirCombate()" class="btn-normal">🏃 Huir</button>
+    `;
+}
+
+function usarPocion() {
+    if (inventario.pociones <= 0) return;
+    inventario.pociones--;
+    const curacion = 60 + Math.floor(Math.random() * 35);
+    jugador.hp = Math.min(jugador.hp + curacion, jugador.hpMax);
+    agregarLog(`¡Usaste una poción y recuperaste ${curacion} HP!`, "#88ffcc");
+    actualizarStats();
+    actualizarBarras();
+    mostrarBotonesCombate();
+}
+
+function huirCombate() {
+    if (Math.random() > 0.45) {
+        agregarLog("¡Escapaste con éxito!", "#88ffcc");
+        terminarCombate();
+    } else {
+        agregarLog("¡No lograste huir!");
+    }
+}
+
+function victoria() {
+    terminarCombate(true);
+    const oroGanado = 42 + Math.floor(Math.random() * 58);
+    let expGanada = 50 + jugador.nivel * 22;
+
+    jugador.oro += oroGanado;
+    jugador.experiencia += expGanada;
+
+    agregarLog(`¡Victoria contra el ${enemigoActual.nombre}!`, "#ffff88");
+    agregarLog(`+${oroGanado} oro | +${expGanada} exp`, "#aaffaa");
+
+    inventario.cristales += Math.floor(Math.random() * 2);
+
+    if (jugador.experiencia >= jugador.expNecesaria) {
+        jugador.nivel++;
+        jugador.ataque += 9;
+        jugador.hpMax += 45;
+        jugador.hp = jugador.hpMax;
+        jugador.experiencia = 0;
+        agregarLog(`¡SUBISTE AL NIVEL ${jugador.nivel}!`, "#ffd700");
+        agregarLog("La dificultad para subir de nivel ha aumentado.", "#ffcc66");
+    }
+
+    actualizarStats();
+    setTimeout(mostrarExploracion, 1600);
+}
+
+function terminarCombate(victoria = false) {
+    enCombate = false;
+    atacando = false;
+    clearInterval(intervaloHeroe);
+    clearInterval(intervaloPet);
+    clearInterval(intervaloEnemigo);
+    document.getElementById("combateUI").style.display = "none";
+    if (!victoria) agregarLog("Combate terminado.");
+    mostrarExploracion();
+}
+
+function gameOver() {
+    terminarCombate();
+    agregarLog("<strong>¡Has sido derrotado en Asteria... Fin de la aventura.</strong>", "#ff3366");
+    document.getElementById("botones").innerHTML = `<button onclick="location.reload()">🔄 Nueva Aventura</button>`;
+}
+
+// ====================== ACCIONES ======================
+function descansar() {
+    jugador.hp = Math.min(jugador.hp + 72, jugador.hpMax);
+    agregarLog("Descansaste y recuperaste fuerzas.", "#88ffcc");
+    actualizarStats();
+}
+
+function mostrarExploracion() {
+    document.getElementById("historia").innerHTML = `Estás en los bosques de Asteria.<br>¿Qué harás ahora?`;
+
+    document.getElementById("botones").innerHTML = `
+        <button onclick="explorar()" class="btn-normal">🌲 Explorar</button>
+        <button onclick="descansar()" class="btn-normal">🏕️ Descansar</button>
+        <button onclick="craftearPocion()" class="btn-craft">🛠️ Craftar Poción (3 hierbas)</button>
+    `;
+}
+
+// ====================== INICIO ======================
+function iniciarJuego() {
+    const nombre = prompt("¿Cómo te llamas, aventurero de Asteria?", "ManaKnight");
+    if (nombre && nombre.trim()) jugador.nombre = nombre.trim();
+
+    agregarLog(`¡Bienvenido a ManaStoria, ${jugador.nombre}!`, "#aaccff");
+    agregarLog("Los pets son extremadamente raros... solo un 3% de probabilidad al explorar.", "#ffaa66");
+    
+    actualizarStats();
+    mostrarExploracion();
+}
+
+iniciarJuego();
+
+</script>
+</body>
+</html>
